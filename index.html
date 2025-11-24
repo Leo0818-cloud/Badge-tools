@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>集團會議識別證 - V10 排版完美修復版</title>
+    <link href="https://fonts.googleapis.com/css2?family=Varela+Round&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        johnsonRed: '#CF102D',
+                        johnsonDark: '#7A091A',
+                        johnsonPale: '#FFF0F3',
+                    },
+                    fontFamily: {
+                        sans: ['"Microsoft JhengHei"', '"Varela Round"', 'sans-serif'],
+                    },
+                    boxShadow: {
+                        'card': '0 20px 40px rgba(122, 9, 26, 0.2)',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body { background-color: #1a1a1a; min-height: 100vh; }
+        
+        /* 識別證尺寸 - 設定 overflow hidden 確保背景不溢出 */
+        .badge-size {
+            width: 87mm; height: 125mm;
+            background: white; position: relative; overflow: hidden;
+            -webkit-print-color-adjust: exact; print-color-adjust: exact;
+        }
+
+        /* 背景圖層 */
+        .bg-layer { position: absolute; inset: 0; width: 100%; height: 100%; }
+        .z-0 { z-index: 0; background: #fff; }
+        .z-1 { z-index: 1; background: linear-gradient(180deg, #7A091A 0%, #9E0C22 25%, #CF102D 50%, #E63E56 75%, rgba(255,255,255,0) 100%); }
+        .z-2 { z-index: 2; mix-blend-mode: overlay; background-image: linear-gradient(90deg, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.1) 20%, transparent 20%, transparent 40%, rgba(255,255,255,0.05) 40%, rgba(255,255,255,0.05) 60%, transparent 60%, transparent 80%, rgba(0,0,0,0.1) 80%); }
+        .z-3 { z-index: 3; opacity: 0.3; background-image: linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px); background-size: 20px 20px; }
+
+        /* 標題區塊 */
+        .header-box {
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            background-color: rgba(255, 255, 255, 0.1);
+            padding: 6px 24px; text-align: center; display: inline-block; 
+            margin-top: 4px; min-width: 220px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .cut-line { border: 1px dashed #d1d5db; }
+        .preview-scale { transform-origin: top center; transform: scale(0.85); }
+        
+        .a4-canvas {
+            width: 210mm; height: 297mm; background: white; padding: 15mm;
+            display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
+            gap: 5mm; justify-items: center; align-items: center; box-sizing: border-box;
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center p-6 text-gray-800">
+
+    <div class="max-w-6xl w-full bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col lg:flex-row min-h-[750px]">
+        
+        <!-- 左側面板 -->
+        <div class="w-full lg:w-4/12 p-8 bg-gray-50 border-r border-gray-200 flex flex-col overflow-y-auto">
+            <h1 class="text-2xl font-black text-johnsonRed mb-6">識別證製作 V10</h1>
+
+            <!-- Logo -->
+            <div class="mb-4 bg-white p-4 rounded-xl border-2 border-dashed border-gray-200 hover:border-johnsonRed cursor-pointer relative text-center transition">
+                <input type="file" accept="image/*" class="absolute inset-0 opacity-0 cursor-pointer" onchange="loadLogo(event)"/>
+                <div id="upload-ui" class="text-gray-400 text-sm font-bold py-2">點擊上傳 Logo</div>
+                <img id="logo-preview" class="hidden h-10 mx-auto object-contain" />
+            </div>
+
+            <!-- 輸入區 -->
+            <div class="space-y-3">
+                <input id="input-name" type="text" placeholder="姓名 (測試: Jürgen Aschauer)" class="w-full px-4 py-2 rounded-lg border bg-white focus:ring-2 focus:ring-johnsonRed outline-none" oninput="updatePreview()">
+                <input id="input-dept" type="text" placeholder="部門 (測試: EUROPE)" class="w-full px-4 py-2 rounded-lg border bg-white focus:ring-2 focus:ring-johnsonRed outline-none" oninput="updatePreview()">
+                <div class="flex gap-2">
+                    <input id="input-group" type="text" placeholder="組別" class="w-1/3 px-2 py-2 rounded-lg border text-center outline-none" oninput="updatePreview()">
+                    <input id="input-car1" type="text" placeholder="車次1" class="w-1/3 px-2 py-2 rounded-lg border text-center outline-none" oninput="updatePreview()">
+                    <input id="input-car2" type="text" placeholder="車次2" class="w-1/3 px-2 py-2 rounded-lg border text-center outline-none" oninput="updatePreview()">
+                </div>
+            </div>
+
+            <!-- 批量操作 -->
+            <div class="mt-6 pt-6 border-t border-gray-200">
+                <p class="text-xs font-bold text-gray-400 mb-2 uppercase">批量生成 (Batch)</p>
+                <div class="flex gap-2">
+                    <button onclick="downloadTemplate()" class="flex-1 py-2 bg-gray-100 text-xs font-bold rounded hover:bg-gray-200">下載範本</button>
+                    <label class="flex-1 py-2 bg-johnsonRed text-white text-xs font-bold rounded text-center cursor-pointer hover:bg-red-700">
+                        上傳 CSV
+                        <input type="file" accept=".csv" class="hidden" onchange="processCSV(event)">
+                    </label>
+                </div>
+                <button onclick="downloadSingle()" class="w-full mt-3 py-3 bg-gray-800 text-white font-bold rounded-lg hover:bg-black shadow-lg">下載單張 PNG</button>
+                
+                <div id="progress-area" class="hidden mt-3">
+                    <div class="w-full bg-gray-200 h-1.5 rounded-full overflow-hidden">
+                        <div id="progress-bar" class="bg-johnsonRed h-full w-0 transition-all"></div>
+                    </div>
+                    <p id="progress-text" class="text-xs text-center text-gray-500 mt-1">準備中...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 右側預覽 -->
+        <div class="w-full lg:w-8/12 bg-[#222] flex items-center justify-center p-8 relative">
+            <div class="preview-scale" id="preview-container"></div>
+        </div>
+    </div>
+
+    <div style="position: fixed; left: -9999px;"><div id="a4-canvas" class="a4-canvas"></div></div>
+
+    <script>
+        let logoData = '';
+
+        function getBadgeHTML(data) {
+            const logo = logoData ? `<img src="${logoData}" class="h-20 max-w-[80%] object-contain drop-shadow-md">` : 
+                                  `<div class="text-white/50 text-xs border border-white/30 rounded px-2 py-1">LOGO</div>`;
+            
+            // 預設測試值
+            const name = data.name || 'Jürgen Aschauer';
+            const dept = data.dept || 'EUROPE';
+            const group = data.group || 'A';
+            const car1 = data.car1 || '101';
+            const car2 = data.car2 || '202';
+
+            return `
+                <div class="badge-size cut-line font-sans">
+                    <!-- 背景層 -->
+                    <div class="bg-layer z-0"></div>
+                    <div class="bg-layer z-1"></div>
+                    <div class="bg-layer z-2"></div>
+                    <div class="bg-layer z-3"></div>
+                    
+                    <!-- 內容層 (使用 Flex Column 佈局) -->
+                    <div class="relative z-10 w-full h-full flex flex-col">
+                        
+                        <!-- 1. Header 區塊 (固定高度 45%) -->
+                        <div class="h-[45%] flex flex-col items-center justify-start pt-6 text-white shrink-0">
+                            <div class="h-20 flex items-center justify-center w-full mb-1">${logo}</div>
+                            <div class="header-box">
+                                <h3 class="text-xl font-extrabold tracking-wider leading-tight text-shadow">2025 GROUP MEETING</h3>
+                                <p class="text-[11px] font-bold tracking-[0.25em] mt-1 text-white/90">JAN 13 ▶ 15</p>
+                            </div>
+                        </div>
+
+                        <!-- 2. White Card (彈性高度，覆蓋在下方) -->
+                        <div class="flex-1 px-5 pb-6 -mt-4 min-h-0">
+                            <!-- 卡片內部使用 Flex Column 與 justify-between 確保頭尾分離 -->
+                            <div class="bg-white w-full h-full rounded-2xl shadow-card flex flex-col pt-6 px-4 pb-3 border-2 border-white/80">
+                                
+                                <!-- 中間：姓名與部門 (自動佔據剩餘空間 flex-1, 內容置中) -->
+                                <div class="flex-1 flex flex-col justify-center items-center w-full min-h-0">
+                                    
+                                    <!-- 姓名：字體縮小至 30px，增加行高 leading-snug (1.375) 避免切字 -->
+                                    <h2 class="text-[30px] font-bold text-gray-900 leading-snug text-center break-words w-full px-1" 
+                                        style="font-family: 'Microsoft JhengHei', sans-serif;">
+                                        ${name}
+                                    </h2>
+                                    
+                                    <!-- 紅線 -->
+                                    <div class="h-1.5 w-16 bg-johnsonRed mt-3 mb-3 shrink-0"></div>
+                                    
+                                    <!-- 部門：增加 padding-bottom 確保不碰到粉紅框 -->
+                                    <p class="text-lg font-bold text-gray-500 uppercase tracking-wide shrink-0 pb-2">${dept}</p>
+                                </div>
+
+                                <!-- 底部：粉紅資訊框 (mt-auto 強制推到底部，避免重疊) -->
+                                <div class="w-full bg-johnsonPale rounded-xl p-3 grid grid-cols-3 gap-px border border-pink-100 shrink-0 mt-auto">
+                                    <div class="text-center border-r border-pink-200 px-1">
+                                        <p class="text-[9px] font-bold text-johnsonRed uppercase mb-0.5">Group</p>
+                                        <p class="text-xl font-bold text-johnsonDark leading-tight">${group}</p>
+                                    </div>
+                                    <div class="text-center border-r border-pink-200 px-1">
+                                        <p class="text-[9px] font-bold text-gray-400 uppercase mb-0.5">Car</p>
+                                        <p class="text-xl font-bold text-gray-800 leading-tight">${car1}</p>
+                                    </div>
+                                    <div class="text-center px-1">
+                                        <p class="text-[9px] font-bold text-gray-400 uppercase mb-0.5">Car</p>
+                                        <p class="text-xl font-bold text-gray-800 leading-tight">${car2}</p>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function updatePreview() {
+            const data = {
+                name: document.getElementById('input-name').value,
+                dept: document.getElementById('input-dept').value,
+                group: document.getElementById('input-group').value,
+                car1: document.getElementById('input-car1').value,
+                car2: document.getElementById('input-car2').value
+            };
+            document.getElementById('preview-container').innerHTML = getBadgeHTML(data);
+        }
+
+        function loadLogo(e) {
+            const reader = new FileReader();
+            reader.onload = function() {
+                logoData = reader.result;
+                document.getElementById('logo-preview').src = logoData;
+                document.getElementById('logo-preview').classList.remove('hidden');
+                document.getElementById('upload-ui').classList.add('hidden');
+                updatePreview();
+            };
+            if(e.target.files[0]) reader.readAsDataURL(e.target.files[0]);
+        }
+
+        // 單張下載修復：增加 scrollY: 0 避免頁面滾動導致的白邊
+        function downloadSingle() {
+            const el = document.getElementById('preview-container').firstElementChild;
+            html2canvas(el, { 
+                scale: 3, 
+                backgroundColor: "#fff",
+                scrollY: 0,
+                scrollX: 0,
+                windowWidth: document.documentElement.offsetWidth,
+                windowHeight: document.documentElement.offsetHeight
+            }).then(canvas => {
+                saveAs(canvas.toDataURL(), `識別證_${document.getElementById('input-name').value}.png`);
+            });
+        }
+
+        function downloadTemplate() {
+            saveAs(new Blob(["\uFEFF姓名,部門,組別,車次1,車次2\nJürgen Aschauer,EUROPE,A,101,202\nMatteo Corrada,SALES-HQ,B,303,303"], {type: 'text/csv'}), "匯入範本.csv");
+        }
+
+        function processCSV(e) {
+            if(!logoData && !confirm('未上傳Logo，繼續？')) return;
+            Papa.parse(e.target.files[0], {
+                header: true, skipEmptyLines: true,
+                complete: async (res) => {
+                    await generateBatch(res.data);
+                }
+            });
+        }
+
+        async function generateBatch(rows) {
+            const zip = new JSZip();
+            const canvas = document.getElementById('a4-canvas');
+            const progress = document.getElementById('progress-bar');
+            document.getElementById('progress-area').classList.remove('hidden');
+
+            const chunks = [];
+            for (let i=0; i<rows.length; i+=4) chunks.push(rows.slice(i, i+4));
+
+            for (let i=0; i<chunks.length; i++) {
+                canvas.innerHTML = '';
+                chunks[i].forEach(row => {
+                    const d = { name: row.姓名, dept: row.部門, group: row.組別, car1: row.車次1, car2: row.車次2 };
+                    const wrap = document.createElement('div');
+                    wrap.innerHTML = getBadgeHTML(d);
+                    canvas.appendChild(wrap.firstElementChild);
+                });
+
+                await new Promise(r => setTimeout(r, 500)); 
+                // 批量導出也增加 scrollY 設定
+                const img = await html2canvas(canvas, { 
+                    scale: 2, 
+                    backgroundColor: "#fff",
+                    scrollY: 0,
+                    scrollX: 0
+                });
+                zip.file(`Page_${i+1}.png`, img.toDataURL().split(',')[1], {base64: true});
+                
+                progress.style.width = `${Math.round(((i+1)/chunks.length)*100)}%`;
+                document.getElementById('progress-text').innerText = `生成第 ${i+1}/${chunks.length} 頁`;
+            }
+
+            zip.generateAsync({type:"blob"}).then(c => saveAs(c, "識別證_V10.zip"));
+        }
+
+        window.onload = updatePreview;
+    </script>
+</body>
+</html>
